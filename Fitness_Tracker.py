@@ -1,207 +1,207 @@
-import sqlite3
-from datetime import datetime
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.dates import DateFormatter
-import tkinter as tk
-from tkinter import ttk, messagebox
+import sys
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                             QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
+                             QHeaderView, QMessageBox)
 
-class FitnessTrackerApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Фитнес Трекер")
-        self.root.geometry("900x700")
+
+class MetricsTracker(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Трекер показателей")
+        self.setGeometry(100, 100, 800, 600)
         
-        self.init_db()
-        self.create_widgets()
-        self.load_data()
+        self.metrics = []  # Список для хранения показателей
+        self.current_edit_id = None  # ID редактируемой записи
+        
+        self.init_ui()
+        
+    def init_ui(self):
+        # Главный виджет и layout
+        main_widget = QWidget()
+        main_layout = QVBoxLayout()
+        
+        # Форма для ввода данных
+        form_layout = QHBoxLayout()
+        
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Название показателя")
+        self.value_input = QLineEdit()
+        self.value_input.setPlaceholderText("Значение")
+        self.date_input = QLineEdit()
+        self.date_input.setPlaceholderText("Дата (ГГГГ-ММ-ДД)")
+        
+        form_layout.addWidget(QLabel("Название:"))
+        form_layout.addWidget(self.name_input)
+        form_layout.addWidget(QLabel("Значение:"))
+        form_layout.addWidget(self.value_input)
+        form_layout.addWidget(QLabel("Дата:"))
+        form_layout.addWidget(self.date_input)
+        
+        # Кнопки управления
+        buttons_layout = QHBoxLayout()
+        
+        self.add_button = QPushButton("Добавить")
+        self.add_button.clicked.connect(self.add_metric)
+        
+        self.edit_button = QPushButton("Редактировать")
+        self.edit_button.clicked.connect(self.edit_metric)
+        self.edit_button.setEnabled(False)
+        
+        self.cancel_button = QPushButton("Отменить")
+        self.cancel_button.clicked.connect(self.cancel_edit)
+        self.cancel_button.setEnabled(False)
+        
+        self.delete_button = QPushButton("Удалить")
+        self.delete_button.clicked.connect(self.delete_metric)
+        self.delete_button.setEnabled(False)
+        
+        buttons_layout.addWidget(self.add_button)
+        buttons_layout.addWidget(self.edit_button)
+        buttons_layout.addWidget(self.cancel_button)
+        buttons_layout.addWidget(self.delete_button)
+        
+        # Таблица с показателями
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["ID", "Название", "Значение", "Дата"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.cellClicked.connect(self.table_row_selected)
+        
+        # Добавляем все в главный layout
+        main_layout.addLayout(form_layout)
+        main_layout.addLayout(buttons_layout)
+        main_layout.addWidget(self.table)
+        
+        main_widget.setLayout(main_layout)
+        self.setCentralWidget(main_widget)
+        
+        # Обновляем таблицу
+        self.update_table()
     
-    def init_db(self):
-        self.conn = sqlite3.connect('fitness_tracker.db')
-        self.c = self.conn.cursor()
-        self.c.execute('''CREATE TABLE IF NOT EXISTS workouts
-                     (date TEXT, pushups INTEGER, pullups INTEGER, 
-                      situps INTEGER, crunches INTEGER)''')
-        self.conn.commit()
-    
-    def create_widgets(self):
-        # Стиль
-        style = ttk.Style()
-        style.configure('TFrame', background='#f0f0f0')
-        style.configure('TLabel', background='#f0f0f0', font=('Arial', 10))
-        style.configure('TButton', font=('Arial', 10))
-        style.configure('Header.TLabel', font=('Arial', 12, 'bold'))
+    def add_metric(self):
+        """Добавление нового показателя"""
+        name = self.name_input.text().strip()
+        value = self.value_input.text().strip()
+        date = self.date_input.text().strip()
         
-        # Основные фреймы
-        self.main_frame = ttk.Frame(self.root)
-        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        self.input_frame = ttk.LabelFrame(self.main_frame, text="Сегодняшняя тренировка", padding=10)
-        self.input_frame.grid(row=0, column=0, sticky='ew', pady=5)
-        
-        self.stats_frame = ttk.LabelFrame(self.main_frame, text="Статистика", padding=10)
-        self.stats_frame.grid(row=1, column=0, sticky='ew', pady=5)
-        
-        self.graph_frame = ttk.LabelFrame(self.main_frame, text="Прогресс", padding=10)
-        self.graph_frame.grid(row=2, column=0, sticky='nsew', pady=5)
-        
-        # Поля ввода
-        today = datetime.now().strftime('%d.%m.%Y')
-        ttk.Label(self.input_frame, text=f"Дата: {today}").grid(row=0, column=0, columnspan=2, pady=5)
-        
-        ttk.Label(self.input_frame, text="Отжимания:").grid(row=1, column=0, sticky='e', padx=5, pady=5)
-        self.pushups_entry = ttk.Entry(self.input_frame, width=10)
-        self.pushups_entry.grid(row=1, column=1, sticky='w', pady=5)
-        
-        ttk.Label(self.input_frame, text="Подтягивания:").grid(row=2, column=0, sticky='e', padx=5, pady=5)
-        self.pullups_entry = ttk.Entry(self.input_frame, width=10)
-        self.pullups_entry.grid(row=2, column=1, sticky='w', pady=5)
-        
-        ttk.Label(self.input_frame, text="Пресс:").grid(row=3, column=0, sticky='e', padx=5, pady=5)
-        self.situps_entry = ttk.Entry(self.input_frame, width=10)
-        self.situps_entry.grid(row=3, column=1, sticky='w', pady=5)
-        
-        ttk.Label(self.input_frame, text="Скручивания:").grid(row=4, column=0, sticky='e', padx=5, pady=5)
-        self.crunches_entry = ttk.Entry(self.input_frame, width=10)
-        self.crunches_entry.grid(row=4, column=1, sticky='w', pady=5)
-        
-        # Кнопки
-        self.save_btn = ttk.Button(self.input_frame, text="Сохранить", command=self.save_workout)
-        self.save_btn.grid(row=5, column=0, columnspan=2, pady=10)
-        
-        # Таблица истории
-        columns = ("date", "pushups", "pullups", "situps", "crunches")
-        self.history_tree = ttk.Treeview(self.stats_frame, columns=columns, show="headings", height=5)
-        
-        self.history_tree.heading("date", text="Дата")
-        self.history_tree.heading("pushups", text="Отжимания")
-        self.history_tree.heading("pullups", text="Подтягивания")
-        self.history_tree.heading("situps", text="Пресс")
-        self.history_tree.heading("crunches", text="Скручивания")
-        
-        for col in columns:
-            self.history_tree.column(col, width=100, anchor='center')
-        
-        scrollbar = ttk.Scrollbar(self.stats_frame, orient="vertical", command=self.history_tree.yview)
-        self.history_tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.history_tree.grid(row=0, column=0, sticky='nsew')
-        scrollbar.grid(row=0, column=1, sticky='ns')
-        
-        # Графики
-        self.figure, self.axs = plt.subplots(2, 2, figsize=(8, 6))
-        self.figure.tight_layout(pad=3.0)
-        self.canvas = FigureCanvasTkAgg(self.figure, self.graph_frame)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        
-        # Настройка растягивания
-        self.main_frame.columnconfigure(0, weight=1)
-        self.main_frame.rowconfigure(2, weight=1)
-        self.stats_frame.columnconfigure(0, weight=1)
-        self.stats_frame.rowconfigure(0, weight=1)
-    
-    def load_data(self):
-        # Очищаем таблицу
-        for item in self.history_tree.get_children():
-            self.history_tree.delete(item)
-        
-        # Загружаем данные из БД
-        self.c.execute("SELECT * FROM workouts ORDER BY date DESC")
-        records = self.c.fetchall()
-        
-        for record in records:
-            date = datetime.strptime(record[0], '%Y-%m-%d').strftime('%d.%m.%Y')
-            self.history_tree.insert("", tk.END, values=(
-                date, record[1], record[2], record[3], record[4]
-            ))
-        
-        # Обновляем графики
-        self.update_graphs()
-    
-    def save_workout(self):
-        try:
-            pushups = int(self.pushups_entry.get())
-            pullups = int(self.pullups_entry.get())
-            situps = int(self.situps_entry.get())
-            crunches = int(self.crunches_entry.get())
-            
-            today = datetime.now().strftime('%Y-%m-%d')
-            
-            # Проверяем есть ли запись на сегодня
-            self.c.execute("SELECT * FROM workouts WHERE date=?", (today,))
-            if self.c.fetchone():
-                self.c.execute('''UPDATE workouts SET 
-                                pushups=?, pullups=?, situps=?, crunches=?
-                                WHERE date=?''', 
-                             (pushups, pullups, situps, crunches, today))
-                messagebox.showinfo("Успех", "Запись обновлена!")
-            else:
-                self.c.execute("INSERT INTO workouts VALUES (?, ?, ?, ?, ?)",
-                              (today, pushups, pullups, situps, crunches))
-                messagebox.showinfo("Успех", "Новая запись добавлена!")
-            
-            self.conn.commit()
-            self.load_data()
-            
-            # Очищаем поля ввода
-            self.pushups_entry.delete(0, tk.END)
-            self.pullups_entry.delete(0, tk.END)
-            self.situps_entry.delete(0, tk.END)
-            self.crunches_entry.delete(0, tk.END)
-            
-        except ValueError:
-            messagebox.showerror("Ошибка", "Пожалуйста, вводите только числа!")
-    
-    def update_graphs(self):
-        self.c.execute("SELECT date, pushups, pullups, situps, crunches FROM workouts ORDER BY date")
-        data = self.c.fetchall()
-        
-        if not data:
+        if not name or not value or not date:
+            QMessageBox.warning(self, "Ошибка", "Все поля должны быть заполнены!")
             return
         
-        dates = [datetime.strptime(row[0], '%Y-%m-%d') for row in data]
-        pushups = [row[1] for row in data]
-        pullups = [row[2] for row in data]
-        situps = [row[3] for row in data]
-        crunches = [row[4] for row in data]
+        # Простая валидация даты (можно улучшить)
+        if len(date) != 10 or date[4] != '-' or date[7] != '-':
+            QMessageBox.warning(self, "Ошибка", "Дата должна быть в формате ГГГГ-ММ-ДД!")
+            return
         
-        # Очищаем графики
-        for ax in self.axs.flat:
-            ax.clear()
+        # Добавляем новый показатель
+        metric_id = len(self.metrics) + 1
+        self.metrics.append({
+            'id': metric_id,
+            'name': name,
+            'value': value,
+            'date': date
+        })
         
-        date_form = DateFormatter("%d.%m")
-        
-        # График отжиманий
-        self.axs[0, 0].plot(dates, pushups, 'r-', marker='o')
-        self.axs[0, 0].set_title('Отжимания')
-        self.axs[0, 0].xaxis.set_major_formatter(date_form)
-        self.axs[0, 0].grid(True)
-        
-        # График подтягиваний
-        self.axs[0, 1].plot(dates, pullups, 'g-', marker='o')
-        self.axs[0, 1].set_title('Подтягивания')
-        self.axs[0, 1].xaxis.set_major_formatter(date_form)
-        self.axs[0, 1].grid(True)
-        
-        # График пресса
-        self.axs[1, 0].plot(dates, situps, 'b-', marker='o')
-        self.axs[1, 0].set_title('Пресс')
-        self.axs[1, 0].xaxis.set_major_formatter(date_form)
-        self.axs[1, 0].grid(True)
-        
-        # График скручиваний
-        self.axs[1, 1].plot(dates, crunches, 'm-', marker='o')
-        self.axs[1, 1].set_title('Скручивания')
-        self.axs[1, 1].xaxis.set_major_formatter(date_form)
-        self.axs[1, 1].grid(True)
-        
-        self.figure.tight_layout()
-        self.canvas.draw()
+        # Очищаем поля ввода
+        self.clear_inputs()
+        # Обновляем таблицу
+        self.update_table()
     
-    def __del__(self):
-        self.conn.close()
+    def edit_metric(self):
+        """Редактирование существующего показателя"""
+        if self.current_edit_id is None:
+            return
+            
+        name = self.name_input.text().strip()
+        value = self.value_input.text().strip()
+        date = self.date_input.text().strip()
+        
+        if not name or not value or not date:
+            QMessageBox.warning(self, "Ошибка", "Все поля должны быть заполнены!")
+            return
+        
+        # Находим и обновляем показатель
+        for metric in self.metrics:
+            if metric['id'] == self.current_edit_id:
+                metric['name'] = name
+                metric['value'] = value
+                metric['date'] = date
+                break
+        
+        # Сбрасываем режим редактирования
+        self.cancel_edit()
+        # Обновляем таблицу
+        self.update_table()
+    
+    def delete_metric(self):
+        """Удаление показателя"""
+        if self.current_edit_id is None:
+            return
+            
+        # Подтверждение удаления
+        reply = QMessageBox.question(
+            self, 'Подтверждение', 
+            'Вы уверены, что хотите удалить этот показатель?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # Удаляем показатель
+            self.metrics = [m for m in self.metrics if m['id'] != self.current_edit_id]
+            # Сбрасываем режим редактирования
+            self.cancel_edit()
+            # Обновляем таблицу
+            self.update_table()
+    
+    def cancel_edit(self):
+        """Отмена редактирования"""
+        self.current_edit_id = None
+        self.clear_inputs()
+        self.add_button.setEnabled(True)
+        self.edit_button.setEnabled(False)
+        self.cancel_button.setEnabled(False)
+        self.delete_button.setEnabled(False)
+        self.table.clearSelection()
+    
+    def table_row_selected(self, row):
+        """Обработка выбора строки в таблице"""
+        self.current_edit_id = int(self.table.item(row, 0).text())
+        
+        # Находим показатель
+        for metric in self.metrics:
+            if metric['id'] == self.current_edit_id:
+                self.name_input.setText(metric['name'])
+                self.value_input.setText(metric['value'])
+                self.date_input.setText(metric['date'])
+                break
+        
+        # Активируем кнопки редактирования
+        self.add_button.setEnabled(False)
+        self.edit_button.setEnabled(True)
+        self.cancel_button.setEnabled(True)
+        self.delete_button.setEnabled(True)
+    
+    def update_table(self):
+        """Обновление таблицы с показателями"""
+        self.table.setRowCount(len(self.metrics))
+        
+        for row, metric in enumerate(self.metrics):
+            self.table.setItem(row, 0, QTableWidgetItem(str(metric['id'])))
+            self.table.setItem(row, 1, QTableWidgetItem(metric['name']))
+            self.table.setItem(row, 2, QTableWidgetItem(metric['value']))
+            self.table.setItem(row, 3, QTableWidgetItem(metric['date']))
+    
+    def clear_inputs(self):
+        """Очистка полей ввода"""
+        self.name_input.clear()
+        self.value_input.clear()
+        self.date_input.clear()
+
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = FitnessTrackerApp(root)
-    root.mainloop()
+    app = QApplication(sys.argv)
+    window = MetricsTracker()
+    window.show()
+    sys.exit(app.exec_())
